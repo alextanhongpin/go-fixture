@@ -56,14 +56,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
+
+	hasDependenciesByTable := make(map[string]bool)
 	depsByTable := make(map[string]map[string]bool)
 	// Find all records with dependencies first, and try to resolve them first.
 	for _, r := range records {
+		if _, ok := hasDependenciesByTable[r.Table]; !ok {
+			hasDependenciesByTable[r.Table] = false
+		}
 		for _, row := range r.Rows {
 			for _, v := range row {
 				if strings.HasPrefix(v, "$") {
+
 					paths := strings.Split(v[1:], ".")
 					dependsOnTable := paths[0]
+					hasDependenciesByTable[dependsOnTable] = true
 					if _, ok := depsByTable[r.Table]; !ok {
 						depsByTable[r.Table] = make(map[string]bool)
 					}
@@ -96,4 +103,5 @@ func main() {
 		traverse(k)
 	}
 	fmt.Println(orderedDeps)
+	fmt.Println(hasDependenciesByTable)
 }
