@@ -5,6 +5,8 @@ package main
 import (
 	"fmt"
 	"log"
+	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -20,19 +22,19 @@ var raw = []byte(`- table: users
       age: 20
 - table: accounts
   rows:
-    - user_id: $users.smith.id
+    - user_id: $.users.smith.id
       type: Facebook
-    - user_id: $users.smith.id
+    - user_id: $.users.smith.id
       type: Google
 - table: books
   rows:
-    - author_id: $authors.smith
+    - author_id: $.authors.smith.id
       name: Amazing Book
-      book_category_id: $book_categories.mystery
+      book_category_id: $.book_categories.mystery.id
 - table: authors
   rows:
     - _id: smith
-      user_id: $users.smith.id
+      user_id: $.users.smith.id
       penname: smith
 - table: book_categories
   rows:
@@ -59,16 +61,20 @@ func main() {
 
 	hasDependenciesByTable := make(map[string]bool)
 	depsByTable := make(map[string]map[string]bool)
+	rowsByTable := make(map[string][]map[string]string)
 	// Find all records with dependencies first, and try to resolve them first.
 	for _, r := range records {
 		if _, ok := hasDependenciesByTable[r.Table]; !ok {
 			hasDependenciesByTable[r.Table] = false
 		}
+		if _, ok := rowsByTable[r.Table]; !ok {
+			rowsByTable[r.Table] = make([]map[string]string, 0)
+		}
+		rowsByTable[r.Table] = append(rowsByTable[r.Table], r.Rows...)
 		for _, row := range r.Rows {
 			for _, v := range row {
 				if strings.HasPrefix(v, "$") {
-
-					paths := strings.Split(v[1:], ".")
+					paths := strings.Split(v[2:], ".")
 					dependsOnTable := paths[0]
 					hasDependenciesByTable[dependsOnTable] = true
 					if _, ok := depsByTable[r.Table]; !ok {
@@ -99,9 +105,63 @@ func main() {
 		}
 		orderedDeps = append(orderedDeps, table)
 	}
+
 	for k := range depsByTable {
 		traverse(k)
 	}
-	fmt.Println(orderedDeps)
-	fmt.Println(hasDependenciesByTable)
+
+	remaining := make(map[string]bool)
+	for k, v := range hasDependenciesByTable {
+		remaining[k] = v
+	}
+
+	for _, v := range orderedDeps {
+		delete(remaining, v)
+	}
+
+	for k := range remaining {
+		orderedDeps = append(orderedDeps, k)
+	}
+
+	stmts := make([]string, 0)
+	for _, v := range orderedDeps {
+		rows := rowsByTable[v]
+		for i, row := range rows {
+			var keys, values []string
+			for k := range row {
+				if k == "_id" {
+					continue
+				}
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				v := row[k]
+				if strings.HasPrefix(v, "$") {
+					parts := strings.Split(v[2:], ".")
+					col := parts[len(parts)-1]
+					tbl := parts[:len(parts)-1]
+					stmt := fmt.Sprintf(`(SELECT %s FROM %s)`, col, strings.Join(tbl, "_"))
+					values = append(values, stmt)
+				} else {
+					_, err := strconv.ParseInt(v, 10, 64)
+					if err == nil {
+						values = append(values, v)
+					} else {
+						values = append(values, fmt.Sprintf(`'%s'`, v))
+					}
+				}
+			}
+			tbl := v
+			id, ok := row["_id"]
+			if ok {
+				tbl = fmt.Sprintf("%s_%s", tbl, id)
+			} else {
+				tbl = fmt.Sprintf("%s_%d", tbl, i)
+			}
+
+			stmts = append(stmts, fmt.Sprintf(`%s AS (INSERT INTO %s(%s) VALUES (%s) RETURNING *)`, tbl, v, strings.Join(keys, ", "), strings.Join(values, ", ")))
+		}
+	}
+	fmt.Println("WITH\n" + strings.Join(stmts, ",\n") + "\nSELECT 1")
 }
