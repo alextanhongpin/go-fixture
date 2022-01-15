@@ -90,3 +90,6 @@ accounts_0 AS (INSERT INTO accounts(type, user_id) VALUES ('Facebook', (SELECT i
 accounts_1 AS (INSERT INTO accounts(type, user_id) VALUES ('Google', (SELECT id FROM users_smith)) RETURNING *)
 SELECT 1
 ```
+
+## TODO
+- allow custom function (`now()`, `tstzrange(null, null, '[)')`)
