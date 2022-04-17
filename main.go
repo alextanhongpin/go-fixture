@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +40,12 @@ func Parse(raw []byte) string {
 	hasDependenciesByTable := make(map[string]bool)
 	depsByTable := make(map[string]map[string]bool)
 	rowsByTable := make(map[string][]map[string]string)
+
+	// NOTE: The insert statement is actually done in reverse order.
+	for _, r := range records {
+		reverse(r.Rows)
+	}
+
 	// Find all records with dependencies first, and try to resolve them first.
 	for _, r := range records {
 		if _, ok := hasDependenciesByTable[r.Table]; !ok {
@@ -178,4 +185,12 @@ func ParseFS(fs FS, dir string) []string {
 		result = append(result, Parse(raw))
 	}
 	return result
+}
+
+func reverse(s interface{}) {
+	n := reflect.ValueOf(s).Len()
+	swap := reflect.Swapper(s)
+	for i, j := 0, n-1; i < j; i, j = i+1, j-1 {
+		swap(i, j)
+	}
 }
