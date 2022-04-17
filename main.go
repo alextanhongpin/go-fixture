@@ -124,9 +124,22 @@ func Parse(raw []byte) string {
 					_, err := strconv.ParseInt(v, 10, 64)
 					if err == nil {
 						values = append(values, v)
-					} else {
-						values = append(values, fmt.Sprintf(`'%s'`, v))
+						continue
 					}
+					_, err = strconv.ParseBool(v)
+					if err == nil {
+						values = append(values, v)
+						continue
+					}
+
+					// Is a function.
+					if strings.Contains(v, "(") && strings.Contains(v, ")") {
+						values = append(values, v)
+						continue
+					}
+
+					// Can only be string.
+					values = append(values, fmt.Sprintf(`'%s'`, v))
 				}
 			}
 			tbl := v

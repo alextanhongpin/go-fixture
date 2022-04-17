@@ -3,9 +3,11 @@
     - _id: smith
       name: smith
       age: 10
+      created_at: now()
     - _id: john
       name: john
       age: 20
+      created_at: now()
 - table: accounts
   rows:
     - user_id: $.users.smith.id
