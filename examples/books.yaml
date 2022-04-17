@@ -1,0 +1,14 @@
+- table: phones
+  rows:
+    - _id: iphone
+      name: iphone
+      device_type_id: $.device_types.ios.id
+    - _id: android
+      name: android
+      device_type_id: $.device_types.android.id
+- table: device_types
+  rows:
+    - _id: ios
+      name: iOS
+    - _id: android
+      name: Android

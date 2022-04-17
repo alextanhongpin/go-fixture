@@ -1,9 +1,10 @@
 // You can edit this code!
 // Click here and start typing.
-package main
+package fixture
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"sort"
 	"strconv"
@@ -12,35 +13,11 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-var raw = []byte(`- table: users
-  rows:
-    - _id: smith
-      name: smith
-      age: 10
-    - _id: john
-      name: john
-      age: 20
-- table: accounts
-  rows:
-    - user_id: $.users.smith.id
-      type: Facebook
-    - user_id: $.users.smith.id
-      type: Google
-- table: books
-  rows:
-    - author_id: $.authors.smith.id
-      name: Amazing Book
-      book_category_id: $.book_categories.mystery.id
-- table: authors
-  rows:
-    - _id: smith
-      user_id: $.users.smith.id
-      penname: smith
-- table: book_categories
-  rows:
-    - _id: mystery
-      name: mystery
-`)
+type FS interface {
+	Open(name string) (fs.File, error)
+	ReadDir(name string) ([]fs.DirEntry, error)
+	ReadFile(name string) ([]byte, error)
+}
 
 type Record struct {
 	Table string              `json:"table"`
@@ -52,7 +29,7 @@ type Dep struct {
 	deps  []string
 }
 
-func main() {
+func Parse(raw []byte) string {
 	var records []Record
 	err := yaml.Unmarshal(raw, &records)
 	if err != nil {
@@ -160,8 +137,32 @@ func main() {
 				tbl = fmt.Sprintf("%s_%d", tbl, i)
 			}
 
-			stmts = append(stmts, fmt.Sprintf(`%s AS (INSERT INTO %s(%s) VALUES (%s) RETURNING *)`, tbl, v, strings.Join(keys, ", "), strings.Join(values, ", ")))
+			stmts = append(stmts, fmt.Sprintf(`  %s AS (INSERT INTO %s(%s) VALUES (%s) RETURNING *)`, tbl, v, strings.Join(keys, ", "), strings.Join(values, ", ")))
 		}
 	}
-	fmt.Println("WITH\n" + strings.Join(stmts, ",\n") + "\nSELECT 1")
+
+	return strings.Join([]string{
+		"WITH",
+		strings.Join(stmts, ",\n"),
+		"SELECT;",
+	}, "\n")
+}
+
+func ParseFS(fs FS, dir string) []string {
+	dirs, err := fs.ReadDir(dir)
+	if err != nil {
+		panic(err)
+	}
+	var result []string
+	for _, dir := range dirs {
+		if dir.IsDir() {
+			continue
+		}
+		raw, err := fs.ReadFile(dir.Name())
+		if err != nil {
+			panic(err)
+		}
+		result = append(result, Parse(raw))
+	}
+	return result
 }

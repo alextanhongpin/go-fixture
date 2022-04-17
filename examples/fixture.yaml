@@ -1,0 +1,28 @@
+- table: users
+  rows:
+    - _id: smith
+      name: smith
+      age: 10
+    - _id: john
+      name: john
+      age: 20
+- table: accounts
+  rows:
+    - user_id: $.users.smith.id
+      type: Facebook
+    - user_id: $.users.smith.id
+      type: Google
+- table: books
+  rows:
+    - author_id: $.authors.smith.id
+      name: Amazing Book
+      book_category_id: $.book_categories.mystery.id
+- table: authors
+  rows:
+    - _id: smith
+      user_id: $.users.smith.id
+      penname: smith
+- table: book_categories
+  rows:
+    - _id: mystery
+      name: mystery
