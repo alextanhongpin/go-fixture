@@ -8,7 +8,6 @@ import (
 	"log"
 	"reflect"
 	"sort"
-	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v2"
@@ -21,8 +20,8 @@ type FS interface {
 }
 
 type Record struct {
-	Table string              `json:"table"`
-	Rows  []map[string]string `json:"rows"`
+	Table string                   `json:"table"`
+	Rows  []map[string]interface{} `json:"rows"`
 }
 
 type Dep struct {
@@ -39,7 +38,7 @@ func Parse(raw []byte) string {
 
 	hasDependenciesByTable := make(map[string]bool)
 	depsByTable := make(map[string]map[string]bool)
-	rowsByTable := make(map[string][]map[string]string)
+	rowsByTable := make(map[string][]map[string]interface{})
 
 	// NOTE: The insert statement is actually done in reverse order.
 	for _, r := range records {
@@ -52,13 +51,14 @@ func Parse(raw []byte) string {
 			hasDependenciesByTable[r.Table] = false
 		}
 		if _, ok := rowsByTable[r.Table]; !ok {
-			rowsByTable[r.Table] = make([]map[string]string, 0)
+			rowsByTable[r.Table] = make([]map[string]interface{}, 0)
 		}
 		rowsByTable[r.Table] = append(rowsByTable[r.Table], r.Rows...)
 		for _, row := range r.Rows {
 			for _, v := range row {
-				if strings.HasPrefix(v, "$") {
-					paths := strings.Split(v[2:], ".")
+				s := fmt.Sprint(v)
+				if strings.HasPrefix(s, "$") {
+					paths := strings.Split(s[2:], ".")
 					dependsOnTable := paths[0]
 					hasDependenciesByTable[dependsOnTable] = true
 					if _, ok := depsByTable[r.Table]; !ok {
@@ -110,6 +110,7 @@ func Parse(raw []byte) string {
 	stmts := make([]string, 0)
 	for _, v := range orderedDeps {
 		rows := rowsByTable[v]
+		s := fmt.Sprint(v)
 		for i, row := range rows {
 			var keys, values []string
 			for k := range row {
@@ -121,32 +122,29 @@ func Parse(raw []byte) string {
 			sort.Strings(keys)
 			for _, k := range keys {
 				v := row[k]
-				if strings.HasPrefix(v, "$") {
-					parts := strings.Split(v[2:], ".")
+				if strings.HasPrefix(s, "$") {
+					parts := strings.Split(s[2:], ".")
 					col := parts[len(parts)-1]
 					tbl := parts[:len(parts)-1]
 					stmt := fmt.Sprintf(`(SELECT %s FROM %s)`, col, strings.Join(tbl, "_"))
 					values = append(values, stmt)
 				} else {
-					_, err := strconv.ParseInt(v, 10, 64)
-					if err == nil {
-						values = append(values, v)
-						continue
-					}
-					_, err = strconv.ParseBool(v)
-					if err == nil {
-						values = append(values, v)
-						continue
-					}
 
-					// Is a function.
-					if strings.Contains(v, "(") && strings.Contains(v, ")") {
-						values = append(values, v)
-						continue
-					}
+					switch v.(type) {
+					case nil:
+						values = append(values, "NULL")
+					case string:
+						// Is a function.
+						if strings.Contains(s, "(") && strings.Contains(s, ")") {
+							values = append(values, s)
+							continue
+						}
 
-					// Can only be string.
-					values = append(values, fmt.Sprintf(`'%s'`, v))
+						// Can only be string.
+						values = append(values, fmt.Sprintf(`'%s'`, v))
+					default:
+						values = append(values, s)
+					}
 				}
 			}
 			tbl := v
