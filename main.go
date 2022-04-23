@@ -110,7 +110,6 @@ func Parse(raw []byte) string {
 	stmts := make([]string, 0)
 	for _, v := range orderedDeps {
 		rows := rowsByTable[v]
-		s := fmt.Sprint(v)
 		for i, row := range rows {
 			var keys, values []string
 			for k := range row {
@@ -122,6 +121,7 @@ func Parse(raw []byte) string {
 			sort.Strings(keys)
 			for _, k := range keys {
 				v := row[k]
+				s := fmt.Sprint(v)
 				if strings.HasPrefix(s, "$") {
 					parts := strings.Split(s[2:], ".")
 					col := parts[len(parts)-1]
