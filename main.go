@@ -160,8 +160,9 @@ func Parse(raw []byte, unmarshalFn func([]byte, any) error) string {
 					case nil:
 						values = append(values, "NULL")
 					case string:
-						// Is a function.
-						if strings.Contains(s, "(") && strings.Contains(s, ")") {
+						// Is a function, e.g. fn:now().
+						if strings.Contains(s, "fn:") && strings.Contains(s, "(") && strings.Contains(s, ")") {
+							s = strings.ReplaceAll(s, "fn:", "")
 							values = append(values, s)
 							continue
 						}
