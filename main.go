@@ -3,14 +3,16 @@
 package fixture
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
-	"log"
 	"reflect"
 	"sort"
 	"strings"
+)
 
-	"gopkg.in/yaml.v2"
+var (
+	ErrDuplicateAlias = errors.New("duplicate alias")
 )
 
 type FS interface {
@@ -21,6 +23,7 @@ type FS interface {
 
 type Record struct {
 	Table string                   `json:"table"`
+	Alias *string                  `json:"alias"`
 	Rows  []map[string]interface{} `json:"rows"`
 }
 
@@ -29,16 +32,17 @@ type Dep struct {
 	deps  []string
 }
 
-func Parse(raw []byte) string {
+func Parse(raw []byte, unmarshalFn func([]byte, any) error) string {
 	var records []Record
-	err := yaml.Unmarshal(raw, &records)
+	err := unmarshalFn(raw, &records)
 	if err != nil {
-		log.Fatalf("error: %v", err)
+		panic(err)
 	}
 
 	hasDependenciesByTable := make(map[string]bool)
 	depsByTable := make(map[string]map[string]bool)
 	rowsByTable := make(map[string][]map[string]interface{})
+	tableByAlias := make(map[string]string)
 
 	// NOTE: The insert statement is actually done in reverse order.
 	for _, r := range records {
@@ -47,6 +51,13 @@ func Parse(raw []byte) string {
 
 	// Find all records with dependencies first, and try to resolve them first.
 	for _, r := range records {
+		if alias := r.Alias; alias != nil {
+			if t, exists := tableByAlias[*alias]; exists {
+				panic(fmt.Errorf("%w: table %q and %q using the alias %q", ErrDuplicateAlias, t, r.Table, *alias))
+			}
+			tableByAlias[*alias] = r.Table
+		}
+
 		if _, ok := hasDependenciesByTable[r.Table]; !ok {
 			hasDependenciesByTable[r.Table] = false
 		}
@@ -69,6 +80,7 @@ func Parse(raw []byte) string {
 			}
 		}
 	}
+
 	var orderedDeps []string
 	var traverse func(string)
 	traverse = func(table string) {
@@ -122,10 +134,15 @@ func Parse(raw []byte) string {
 			for _, k := range keys {
 				v := row[k]
 				s := fmt.Sprint(v)
+				// $.products.coke.id
 				if strings.HasPrefix(s, "$") {
-					parts := strings.Split(s[2:], ".")
-					col := parts[len(parts)-1]
-					tbl := parts[:len(parts)-1]
+					parts := strings.Split(s[2:], ".") // Output: [products, coke, id]
+					col := parts[len(parts)-1]         // Output: id
+
+					tbl := parts[:len(parts)-1] // Output: [products, coke]
+					if v, ok := tableByAlias[tbl[0]]; ok {
+						tbl[0] = v
+					}
 					stmt := fmt.Sprintf(`(SELECT %s FROM %s)`, col, strings.Join(tbl, "_"))
 					values = append(values, stmt)
 				} else {
@@ -166,7 +183,7 @@ func Parse(raw []byte) string {
 	}, "\n")
 }
 
-func ParseFS(fs FS, dir string) []string {
+func ParseFS(fs FS, dir string, unmarshalFn func([]byte, any) error) []string {
 	dirs, err := fs.ReadDir(dir)
 	if err != nil {
 		panic(err)
@@ -180,7 +197,7 @@ func ParseFS(fs FS, dir string) []string {
 		if err != nil {
 			panic(err)
 		}
-		result = append(result, Parse(raw))
+		result = append(result, Parse(raw, unmarshalFn))
 	}
 	return result
 }

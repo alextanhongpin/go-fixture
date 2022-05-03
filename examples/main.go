@@ -7,6 +7,7 @@ import (
 	_ "embed"
 
 	"github.com/alextanhongpin/go-fixture"
+	"gopkg.in/yaml.v3"
 )
 
 //go:embed fixture.yaml
@@ -16,6 +17,6 @@ var raw []byte
 var yamls embed.FS
 
 func main() {
-	fmt.Println(fixture.Parse(raw))
-	fmt.Println(fixture.ParseFS(yamls, "."))
+	fmt.Println(fixture.Parse(raw, yaml.Unmarshal))
+	fmt.Println(fixture.ParseFS(yamls, ".", yaml.Unmarshal))
 }
