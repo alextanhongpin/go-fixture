@@ -49,15 +49,19 @@ func Parse(raw []byte, unmarshalFn func([]byte, any) error) string {
 		reverse(r.Rows)
 	}
 
-	// Find all records with dependencies first, and try to resolve them first.
+	// Resolve all alias first.
 	for _, r := range records {
 		if alias := r.Alias; alias != nil {
 			if t, exists := tableByAlias[*alias]; exists {
 				panic(fmt.Errorf("%w: table %q and %q using the alias %q", ErrDuplicateAlias, t, r.Table, *alias))
 			}
+
 			tableByAlias[*alias] = r.Table
 		}
+	}
 
+	// Find all records with dependencies first, and try to resolve them first.
+	for _, r := range records {
 		if _, ok := hasDependenciesByTable[r.Table]; !ok {
 			hasDependenciesByTable[r.Table] = false
 		}
@@ -70,7 +74,12 @@ func Parse(raw []byte, unmarshalFn func([]byte, any) error) string {
 				s := fmt.Sprint(v)
 				if strings.HasPrefix(s, "$") {
 					paths := strings.Split(s[2:], ".")
+					tableOrAlias := paths[0]
 					dependsOnTable := paths[0]
+					if tbl, ok := tableByAlias[tableOrAlias]; ok {
+						dependsOnTable = tbl
+					}
+
 					hasDependenciesByTable[dependsOnTable] = true
 					if _, ok := depsByTable[r.Table]; !ok {
 						depsByTable[r.Table] = make(map[string]bool)
